@@ -1,8 +1,21 @@
-SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
-{
-	SKSE::Init(a_skse);
+#include <SKSE/API.h>
+#include <SKSE/Interfaces.h>
+#include <SKSE/Logger.h>
+#include "papyrusFunctions.h"
 
-	logs::info("Hello World!");
+// SKSE Plugin Entry Point
+SKSEPluginLoad(const SKSE::LoadInterface* skse) {
+    // Initialize SKSE
+    SKSE::Init(skse);
+    logs::info("VBoS Papyrus Extensions loading...");
+	
+    // Get the Papyrus interface to register our custom functions.
+    auto papyrus = SKSE::GetPapyrusInterface();
+    if (!papyrus || !papyrus->Register(papyrusFunctions::Register)) {
+        logs::error("Failed to register Papyrus functions!");
+        return false;
+    }
 
-	return true;
+    logs::info("VBoS Papyrus Extensions initialized successfully.");
+    return true;
 }
