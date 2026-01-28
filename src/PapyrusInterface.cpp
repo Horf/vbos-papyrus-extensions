@@ -20,7 +20,7 @@ namespace PapyrusInterface
         return vm->handlePolicy.GetHandleForObject(id, akForm);
     }
 
-    void SendEvents(std::vector<RE::VMHandle> handles, RE::BSScript::IFunctionArguments* args) {
+    void SendEvents(const std::vector<RE::VMHandle>& handles, RE::BSScript::IFunctionArguments* args) {
         auto* vm = RE::SkyrimVM::GetSingleton();
         // Safety check: If no handles or VM is missing, clean up arguments to prevent memory leaks.
         if (handles.empty() || !vm) {

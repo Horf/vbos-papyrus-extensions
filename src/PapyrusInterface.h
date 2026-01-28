@@ -6,7 +6,7 @@ namespace PapyrusInterface
     RE::VMHandle GetHandle(RE::TESForm* akForm);
 
     // Helper: Send event to specific scripts
-    void SendEvents(std::vector<RE::VMHandle> handles, RE::BSScript::IFunctionArguments* args);
+    void SendEvents(const std::vector<RE::VMHandle>& handles, RE::BSScript::IFunctionArguments* args);
     
     // Starts a thread to monitor sound status and fire "OnSoundFinish"
     void CreateSoundEvent(int32_t soundID, std::vector<RE::VMHandle> vmHandles, RE::TESForm* soundForm);

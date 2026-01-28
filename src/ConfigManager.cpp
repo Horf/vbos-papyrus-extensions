@@ -28,6 +28,8 @@ namespace ConfigManager
 
     void LoadConfigs() {
         bookToPathMap.clear();
+        size_t totalEntries = 0;
+
         // Base configfile path
         const std::filesystem::path configPath{ "Data" };
 
@@ -76,13 +78,21 @@ namespace ConfigManager
 
                 // Parse: FormID~Plugin | Path
                 auto pipePos = trimmedLine.find('|');
-                if (pipePos == std::string::npos) continue;
+                if (pipePos == std::string::npos) {
+                    logs::warn("Line {}: Missing pipe '|' separator.", lineNum);
+                    continue;
+                }
+
+                totalEntries++;
 
                 std::string fullId = Trim(trimmedLine.substr(0, pipePos));
                 std::string rawPath = Trim(trimmedLine.substr(pipePos + 1));
 
                 auto tildePos = fullId.find('~');
-                if (tildePos == std::string::npos) continue;
+                if (tildePos == std::string::npos) {
+                    logs::warn("Line {}: Missing tilde '~' separator in ID.", lineNum);
+                    continue;
+                }
 
                 std::string formIdStr = Trim(fullId.substr(0, tildePos));
                 std::string pluginName = Trim(fullId.substr(tildePos + 1));
@@ -103,7 +113,7 @@ namespace ConfigManager
                 }
             }
         }
-        logs::info("ConfigManager: Total {} mappings loaded.", bookToPathMap.size());
+        logs::info("ConfigManager: Total {}/{} mappings loaded.", bookToPathMap.size(), totalEntries);
     }
 
     std::string GetPathForBook(const RE::TESForm* book) {
