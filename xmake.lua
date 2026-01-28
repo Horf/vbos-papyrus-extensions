@@ -5,8 +5,8 @@ set_xmakever("2.8.2")
 includes("lib/commonlibsse-ng")
 
 -- set project
-set_project("VBoS Papyrus Extensions")
-set_version("0.1.0")
+set_project("VBoS Extension Plugin")
+set_version("2.1.0")
 set_license("GPL-3.0")
 
 -- set defaults
@@ -21,15 +21,15 @@ add_rules("mode.debug", "mode.releasedbg")
 add_rules("plugin.vsxmake.autoupdate")
 
 -- targets
-target("VBoS Papyrus Extensions")
+target("VBoS Extension Plugin")
     -- add dependencies to target
     add_deps("commonlibsse-ng")
 
     -- add commonlibsse-ng plugin
     add_rules("commonlibsse-ng.plugin", {
-        name = "VBoS Papyrus Extensions",
+        name = "VBoS Extension Plugin",
         author = "PRieST47",
-        description = "Adds some mandatory Papyrus functions needed for VBoS to work as intended"
+        description = "Adds mandatory Papyrus functions as well as a config parser for easy implementation."
     })
 
     -- add src files
