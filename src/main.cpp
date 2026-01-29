@@ -29,6 +29,6 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
         return false;
     }
 
-    logs::info("VBoS Extension Plugin initialized successfully.");
+    logs::info("VBoS Extension Plugin initialized successfully.\n");
     return true;
 }
