@@ -8,7 +8,7 @@ namespace ConfigManager
     // Metadata Struct for logging
     struct ConfigEntryMeta {
         std::string fileName;
-        int lineNumber;
+        int lineNumber = 0;
         std::string fullPath;
     };
 
@@ -32,6 +32,22 @@ namespace ConfigManager
 
     void LoadConfigs() {
         bookToPathMap.clear();
+
+		// Early exit if neither data handler or...
+        auto* dataHandler = RE::TESDataHandler::GetSingleton();
+        if (!dataHandler) {
+            logs::critical("Skyrim DataHandler not found!");
+            return;
+        }
+		// ...data directory is found
+        const std::filesystem::path configPath{ "Data" };
+        std::error_code ec;
+        if (!std::filesystem::exists(configPath, ec)) {
+            std::string ecMessage = ec.message();
+            logs::critical("Data directory not found or not accessible! Error: {}", ecMessage);
+            return;
+        }
+
 		// Temp map for Metadata (for conflict logging)
         std::unordered_map<RE::FormID, ConfigEntryMeta> metadataMap;
 
@@ -39,25 +55,29 @@ namespace ConfigManager
         size_t globalOverwrites = 0;
         size_t globalErrors = 0;
 
-        // Base configfile path
-        const std::filesystem::path configPath{ "Data" };
-		// Security check, but honestly shouldn't be necessary
-        if (!std::filesystem::exists(configPath)) {
-            logs::error("Data folder not found");
+		// Security check, in case of filesystem errors
+        std::error_code iteratorError;
+        auto directoryIterator = std::filesystem::directory_iterator(configPath, iteratorError);
+        if (iteratorError) {
+            std::string iteratorMessage = iteratorError.message();
+            logs::error("Failed to begin directory scan: {}", iteratorMessage);
             return;
         }
-
-        auto* dataHandler = RE::TESDataHandler::GetSingleton();
-        if (!dataHandler) return;
 
         // Find all _VBOS.ini files
         std::vector<std::filesystem::path> validFiles;
         std::vector<std::string> ignoredFiles;
-
-        for (const auto& entry : std::filesystem::directory_iterator(configPath)) {
-            if (entry.is_regular_file()) {
+        for (const auto& entry : directoryIterator) {
+            std::error_code entryError;
+            if (entry.is_regular_file(entryError)) {
                 auto currentPath = entry.path();
-                std::string fileName = currentPath.filename().string();
+
+                // Safe conversion from std::filesystem::path to UTF-8 std::string
+                auto u8Name = currentPath.filename().u8string();
+                std::string fileName(reinterpret_cast<const char*>(u8Name.c_str()));
+                if (fileName.empty()) continue;
+
+                // Case-insensitive check for suffix to find valid config files for VBoS
                 std::string fileNameLower = fileName;
                 std::ranges::transform(fileNameLower, fileNameLower.begin(),
                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -68,7 +88,10 @@ namespace ConfigManager
                     ignoredFiles.push_back(fileName);
                 }
             }
+            // Ignore non-regular files
+            else continue;
         }
+
         std::ranges::sort(validFiles);
         std::ranges::sort(ignoredFiles);
 
@@ -79,6 +102,16 @@ namespace ConfigManager
             for (const auto& fileName : ignoredFiles) {
                 logs::info("{} has wrong suffix, has to be: '_VBOS.ini'\n", fileName);
             }
+        }
+
+		// No valid files are found
+        if (validFiles.empty()) {
+            logs::warn("====================================================================================\n"
+                "\t\t\t\t\t\t\tVBoS WARNING: No valid configuration files found!\n"
+                "\t\t\t\tThe mod will not function without a valid '*_VBOS.ini' file in the Data folder.\n"
+                "\t\t\t\t\tPossible causes: Wrong installation or unreadable filename characters.\n"
+                "\t\t\t   ====================================================================================");
+            return;
         }
 
         logs::info("==========================================\n"
@@ -159,15 +192,11 @@ namespace ConfigManager
                     logs::warn("\tFail: Line {} - Invalid Hex ID format: 0x{}", lineNum, formIdHex);
                     fileErrors++; continue;
                 }
-                // Lookup Form
+				// Lookup Form
                 auto* bookForm = dataHandler->LookupForm(localID, pluginName);
-                if (!bookForm) {
-                    logs::warn("\tFail: Line {} - FormID 0x{:X} not found in plugin '{}'", lineNum, localID, pluginName);
-                    fileErrors++; continue;
-                }
-                // Type Check (is it a book?)
-                if (bookForm->GetFormType() != RE::FormType::Book) {
-                    logs::warn("\tFail: Line {} - FormID 0x{:X} ({}) is NOT a Book", lineNum, localID, pluginName);
+				// Combined Check: Not found OR Not a Book
+                if (!bookForm || bookForm->GetFormType() != RE::FormType::Book) {
+                    logs::warn("\tFail: Line {} - FormID 0x{:X} in '{}' is NOT a valid Book ", lineNum, localID, pluginName);
                     fileErrors++; continue;
                 }
 
