@@ -6,7 +6,7 @@ includes("lib/commonlibsse-ng")
 
 -- set project
 set_project("VBoS Extension Plugin")
-set_version("2.1.0")
+set_version("2.1.2")
 set_license("GPL-3.0")
 
 -- set defaults
