@@ -1,5 +1,31 @@
 #include "PapyrusInterface.h"
 #include "ConfigManager.h"
+#include "SubtitleManager.h"
+#include "RenderManager.h"
+
+#include <vector>
+#include <cstdint>
+#include <Windows.h>
+#include <unordered_map>
+#include <mutex>
+#include <chrono>
+#include <thread>
+#include <string>
+
+#include <RE/B/BGSSoundDescriptorForm.h>
+#include <RE/B/BGSStandardSoundDef.h>
+#include <RE/B/BSAudioManager.h>
+#include <RE/B/BSCoreTypes.h>
+#include <RE/B/BSFixedString.h>
+#include <RE/B/BSSoundHandle.h>
+#include <RE/F/FunctionArguments.h>
+#include <RE/I/ID.h>
+#include <RE/I/IFunctionArguments.h>
+#include <RE/I/IVirtualMachine.h>
+#include <RE/S/SkyrimVM.h>
+#include <RE/T/TESForm.h>
+#include <RE/T/TESObjectBOOK.h>
+#include <RE/T/TypeTraits.h>
 
 namespace PapyrusInterface
 {
@@ -48,7 +74,7 @@ namespace PapyrusInterface
                 auto it = playedSoundHandlesMap.find(soundID);
                 
                 if (it != playedSoundHandlesMap.end()) {
-                    // Check if stopped (State 2) or invalid
+                    // Check if stopped (state 2) or invalid
                     if (it->second.state.underlying() == 2 || !it->second.IsValid()) {
                         isPlaying = false;
                         playedSoundHandlesMap.erase(it);
@@ -59,6 +85,10 @@ namespace PapyrusInterface
                     isPlaying = false;
                 }
             }
+
+            // Stop subtitles when sound finishes automatically
+            SubtitleManager::StopSubtitles(soundID);
+
             // Send finish event to Papyrus
             auto* args = RE::MakeFunctionArguments(static_cast<RE::TESForm*>(soundForm), static_cast<int>(soundID));
             SendEvents(vmHandles, args);
@@ -119,6 +149,9 @@ namespace PapyrusInterface
                 playedSoundHandlesMap[id] = soundHandle;
             }
 
+			// Start subtitles for the sound
+            SubtitleManager::StartSubtitles(akBook, id);
+
             // Start monitoring the sound
             CreateSoundEvent(id, vmHandles, akBook);
             return id;
@@ -126,9 +159,33 @@ namespace PapyrusInterface
         return -1;
     }
 
+	// Papyrus function to pause/resume subtitles
+    void SetSubtitlesPaused(RE::StaticFunctionTag*, bool bPaused) {
+        SubtitleManager::SetPaused(bPaused);
+    }
+
+	// Papyrus function to enable/disable subtitles
+    void EnableSubtitles(RE::StaticFunctionTag*, bool bEnable) {
+        SubtitleManager::bSubtitlesEnabled = bEnable;
+    }
+
+	// Papyrus function to stop subtitles immediately
+    void StopSubtitles(RE::StaticFunctionTag*) {
+        SubtitleManager::StopSubtitles();
+    }
+
+	// Papyrus function to check if subtitles are available
+    bool IsSubtitleAvailable(RE::StaticFunctionTag*) {
+        return RenderManager::IsReady();
+    }
+
     bool Register(RE::BSScript::IVirtualMachine* vm) {
         if (!vm) return false;
         vm->RegisterFunction("PlaySound", "VBoSPapyrusExtensions", PlaySound);
+        vm->RegisterFunction("SetSubtitlesPaused", "VBoSPapyrusExtensions", SetSubtitlesPaused);
+        vm->RegisterFunction("EnableSubtitles", "VBoSPapyrusExtensions", EnableSubtitles);
+        vm->RegisterFunction("StopSubtitles", "VBoSPapyrusExtensions", StopSubtitles);
+        vm->RegisterFunction("IsSubtitleAvailable", "VBoSPapyrusExtensions", IsSubtitleAvailable);
         return true;
     }
 }

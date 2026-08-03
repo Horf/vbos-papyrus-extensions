@@ -4,9 +4,14 @@ set_xmakever("2.8.2")
 -- includes
 includes("lib/commonlibsse-ng")
 
+-- requirenments
+add_requires("minhook")
+add_requires("imgui", {configs = {win32 = true, dx11 = true}})
+add_requires("nlohmann_json")
+
 -- set project
 set_project("VBoS Extension Plugin")
-set_version("2.1.2")
+set_version("2.2.0")
 set_license("GPL-3.0")
 
 -- set defaults
@@ -24,6 +29,11 @@ add_rules("plugin.vsxmake.autoupdate")
 target("VBoS Extension Plugin")
     -- add dependencies to target
     add_deps("commonlibsse-ng")
+
+    -- add packages to target
+    add_packages("minhook")
+    add_packages("imgui")
+    add_packages("nlohmann_json")
 
     -- add commonlibsse-ng plugin
     add_rules("commonlibsse-ng.plugin", {

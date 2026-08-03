@@ -1,5 +1,24 @@
 #include "ConfigManager.h"
 
+#include <unordered_map>
+#include <string_view>
+#include <cctype>
+#include <system_error>
+#include <filesystem>
+#include <vector>
+#include <ranges>
+#include <algorithm>
+#include <fstream>
+#include <string>
+#include <charconv>
+
+#include <RE/B/BSCoreTypes.h>
+#include <RE/F/FormTypes.h>
+#include <RE/T/TESDataHandler.h>
+#include <RE/T/TESForm.h>
+
+#include <SKSE/Logger.h>
+
 namespace ConfigManager
 {
     // Maps Book: FormID -> Sound File Path
@@ -12,15 +31,16 @@ namespace ConfigManager
         std::string fullPath;
     };
 
-    std::string_view Trim(std::string_view str) {
+    // Helper: Removes leading and trailing whitespace
+    static std::string_view Trim(std::string_view str) {
         size_t first = str.find_first_not_of(" \t\r\n");
         if (std::string_view::npos == first) return "";
         size_t last = str.find_last_not_of(" \t\r\n");
         return str.substr(first, (last - first + 1));
     }
 
-    // Fix path separators and remove 'data' prefix for Skyrim engine
-    std::string NormalizePath(std::string_view strPath) {
+    // Helper: Fix path separators and remove 'data' prefix for Skyrim engine
+    static std::string NormalizePath(std::string_view strPath) {
         std::string path(strPath);
         for (char& c : path) {
             if (c == '/') c = '\\';
@@ -70,7 +90,7 @@ namespace ConfigManager
         for (const auto& entry : directoryIterator) {
             std::error_code entryError;
             if (entry.is_regular_file(entryError)) {
-                auto currentPath = entry.path();
+                std::filesystem::path currentPath = entry.path();
 
                 // Safe conversion from std::filesystem::path to UTF-8 std::string
                 auto u8Name = currentPath.filename().u8string();

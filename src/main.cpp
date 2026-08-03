@@ -1,16 +1,25 @@
 #include <SKSE/API.h>
 #include <SKSE/Interfaces.h>
 #include <SKSE/Logger.h>
+
 #include "PapyrusInterface.h"
+#include "SubtitleManager.h"
 #include "ConfigManager.h"
+#include "RenderManager.h"
 
 // Initialize messaging to load configs once data is ready
 void InitializeMessaging() {
     auto* messaging = SKSE::GetMessagingInterface();
     messaging->RegisterListener([](SKSE::MessagingInterface::Message* message) {
         if (message->type == SKSE::MessagingInterface::kDataLoaded) {
+			// Load subtitle settings from INI
+            SubtitleManager::InstallInputSink();
             // Load INI mappings when Skyrim has loaded all forms
             ConfigManager::LoadConfigs();
+        }
+        else if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
+            // Connect to VR ImGui helper if running in VR mode
+            RenderManager::ConnectVR();
         }
         });
 }
@@ -21,7 +30,11 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     SKSE::Init(skse);
     InitializeMessaging();
     logs::info("VBoS Extension Plugin loading...");
-	
+
+    // Allocate memory for engine hooks
+    SKSE::AllocTrampoline(128);
+    RenderManager::InstallHooks();
+
     // Get the Papyrus interface to register our custom function.
     auto papyrus = SKSE::GetPapyrusInterface();
     if (!papyrus || !papyrus->Register(PapyrusInterface::Register)) {
