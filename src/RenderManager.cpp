@@ -38,7 +38,7 @@ namespace RenderManager
 
     void ConnectVR() {
         if (REL::Module::IsVR()) {
-            if (g_vrClient.Connect("VBoS", "2.2.0", ImGuiVRHelperPluginAPI::kClientFlag_HUDMode)) {
+            if (g_vrClient.Connect("VBoS", "2.2.1", ImGuiVRHelperPluginAPI::kClientFlag_HUDMode)) {
                 logs::info("Connected to ImGuiVRHelper (HUD Mode)!");
 
                 g_vrClient.SetHudStyleCallback([]() {

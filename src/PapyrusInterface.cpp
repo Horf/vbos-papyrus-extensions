@@ -43,7 +43,7 @@ namespace PapyrusInterface
         if (!vm) return NULL;
         // Cast the form type to the specific VMTypeID required by the handle policy.
         RE::VMTypeID id = static_cast<RE::VMTypeID>(akForm->GetFormType());
-        return vm->handlePolicy.GetHandleForObject(id, akForm);
+        return vm->GetHandlePolicy().GetHandleForObject(id, akForm);
     }
 
     void SendEvents(const std::vector<RE::VMHandle>& handles, RE::BSScript::IFunctionArguments* args) {
@@ -123,7 +123,7 @@ namespace PapyrusInterface
             RE::BSResource::ID originalID = standardDef->soundFiles[0];
             standardDef->soundFiles[0] = newFileID;
 
-            built = audioManager->BuildSoundDataFromDescriptor(soundHandle, internalDesc);
+            built = audioManager->GetSoundHandle(soundHandle, internalDesc);
             standardDef->soundFiles[0] = originalID;
         }
         if (!built || !soundHandle.IsValid()) return -1;
