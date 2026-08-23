@@ -11,7 +11,7 @@ add_requires("nlohmann_json")
 
 -- set project
 set_project("VBoS Extension Plugin")
-set_version("2.2.2")
+set_version("2.2.3")
 set_license("GPL-3.0")
 
 -- set defaults

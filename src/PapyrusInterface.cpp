@@ -43,7 +43,7 @@ namespace PapyrusInterface
         if (!vm) return NULL;
         // Cast the form type to the specific VMTypeID required by the handle policy.
         RE::VMTypeID id = static_cast<RE::VMTypeID>(akForm->GetFormType());
-        return vm->GetHandlePolicy().GetHandleForObject(id, akForm);
+        return vm->GetVMRuntimeData().handlePolicy.GetHandleForObject(id, akForm);
     }
 
     void SendEvents(const std::vector<RE::VMHandle>& handles, RE::BSScript::IFunctionArguments* args) {
