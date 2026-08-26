@@ -32,7 +32,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     logs::info("VBoS Extension Plugin loading...");
 
     // Allocate memory for engine hooks
-    SKSE::AllocTrampoline(128);
+    SKSE::AllocTrampoline(14);
     RenderManager::InstallHooks();
 
     // Get the Papyrus interface to register our custom function.
