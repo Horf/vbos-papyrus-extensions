@@ -212,11 +212,25 @@ namespace ConfigManager
                     logs::warn("\tFail: Line {} - Invalid Hex ID format: 0x{}", lineNum, formIdHex);
                     fileErrors++; continue;
                 }
+
+                // Check if the user accidentally included the 2-digit load order index
+                if (localID > 0xFFFFFF) {
+                    logs::warn("\tFail: Line {} - FormID 0x{:X} is too large! Load order index included.", lineNum, localID);
+                    fileErrors++; continue;
+                }
+
 				// Lookup Form
                 auto* bookForm = dataHandler->LookupForm(localID, pluginName);
-				// Combined Check: Not found OR Not a Book
-                if (!bookForm || bookForm->GetFormType() != RE::FormType::Book) {
-                    logs::warn("\tFail: Line {} - FormID 0x{:X} in '{}' is NOT a valid Book ", lineNum, localID, pluginName);
+
+                // Form not found (Usually wrong master / override plugin)
+                if (!bookForm) {
+                    logs::warn("\tFail: Line {} - FormID 0x{:X} not found in '{}'. Plugin isn't the master.", lineNum, localID, pluginName);
+                    fileErrors++; continue;
+                }
+
+                // Form found, but it's not a Book
+                if (bookForm->GetFormType() != RE::FormType::Book) {
+                    logs::warn("\tFail: Line {} - FormID 0x{:X} in '{}' exists, but it's NOT a Book.", lineNum, localID, pluginName);
                     fileErrors++; continue;
                 }
 

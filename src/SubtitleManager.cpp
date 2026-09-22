@@ -35,6 +35,11 @@ namespace SubtitleManager
     float fontSize = 24.0f;
     ImVec4 textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 
+	// Default window size multipliers (relative to screen size)
+    float fWindowWidthMult = 0.5f;
+    float fWindowHeightMult = 0.15f;
+    float fWindowBottomOffset = 80.0f;
+
     // Keyboard controls
     uint32_t keySpeedUp = 78;   // Num+
     uint32_t keySpeedDown = 74; // Num-
@@ -47,6 +52,7 @@ namespace SubtitleManager
     std::string currentText = "";
     float currentScrollY = 0.0f;
     int32_t activeSoundID = -1;
+    static std::filesystem::file_time_type lastIniTime;
 
 	// Alias translations as default fallback
     std::string t_Player = "Friend";
@@ -92,7 +98,19 @@ namespace SubtitleManager
     }
 
     void LoadSettings() {
-        std::ifstream file("Data\\SKSE\\Plugins\\VBoS_Subtitles.ini");
+        std::string iniPath = "Data\\SKSE\\Plugins\\VBoS_Subtitles.ini";
+        std::error_code ec;
+
+		// Check if the INI file exists and if it was changed since the last load
+        if (std::filesystem::exists(iniPath, ec)) {
+            auto currentTime = std::filesystem::last_write_time(iniPath, ec);
+            if (currentTime == lastIniTime) {
+                return;
+            }
+            lastIniTime = currentTime;
+        }
+
+        std::ifstream file(iniPath);
         if (!file.is_open()) {
             logs::info("No VBoS_Subtitles.ini found. Using default subtitle settings.");
             return;
@@ -101,7 +119,14 @@ namespace SubtitleManager
         std::string line;
         float r = 255.0f, g = 255.0f, b = 255.0f;
 
+        // INI extension: version 2.2.6
+        std::vector<std::string> fileLines;
+        bool foundWidth = false, foundHeight = false, foundOffset = false;
+        int insertIndex = -1;
+
         while (std::getline(file, line)) {
+            fileLines.push_back(line);
+
             auto delim = line.find('=');
             if (delim != std::string::npos) {
                 std::string key = TrimStr(line.substr(0, delim));
@@ -120,10 +145,27 @@ namespace SubtitleManager
                     else if (key == "FontSize") fontSize = std::stof(val);
                     else if (key == "ColorR") r = std::clamp(std::stof(val), 0.0f, 255.0f);
                     else if (key == "ColorG") g = std::clamp(std::stof(val), 0.0f, 255.0f);
-                    else if (key == "ColorB") b = std::clamp(std::stof(val), 0.0f, 255.0f);
+                    else if (key == "ColorB"){
+                        b = std::clamp(std::stof(val), 0.0f, 255.0f);
+                        insertIndex = static_cast<int>(fileLines.size());
+                    }
                     else if (key == "KeySpeedUp") keySpeedUp = std::stoul(val);
                     else if (key == "KeySpeedDown") keySpeedDown = std::stoul(val);
                     else if (key == "KeyModifier") keyModifier = std::stoul(val);
+
+                    // Bounding box settings
+                    else if (key == "WindowWidthMult") {
+                        fWindowWidthMult = std::clamp(std::stof(val), 0.05f, 1.0f);
+						foundWidth = true;
+                    }
+                    else if (key == "WindowHeightMult") {
+                        fWindowHeightMult = std::clamp(std::stof(val), 0.05f, 1.0f);
+						foundHeight = true;
+                    }
+                    else if (key == "WindowBottomOffset") {
+                        fWindowBottomOffset = std::stof(val);
+						foundOffset = true;
+                    }
 
 					// Translations
                     else if (key == "AliasPlayer") t_Player = val;
@@ -169,7 +211,39 @@ namespace SubtitleManager
                 }
             }
         }
+		file.close();
+
         textColor = ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+
+		// If any of the bounding box settings were missing, insert them with default values and update the INI file
+        if (!foundWidth || !foundHeight || !foundOffset) {
+            std::vector<std::string> insertLines;
+            
+            insertLines.push_back("");
+            insertLines.push_back("; Subtitle window size");
+            insertLines.push_back("; How wide the subtitle window is (1.0 = 100% of screen width. Default is 0.5)");
+            if (!foundWidth) insertLines.push_back("WindowWidthMult=0.5");
+            insertLines.push_back("; How tall the subtitle window is (0.15 = 15% of screen height. Default is 0.15)");
+            if (!foundHeight) insertLines.push_back("WindowHeightMult=0.15");
+            insertLines.push_back("; Distance from the bottom of the screen in pixels (Default is 80.0)");
+            if (!foundOffset) insertLines.push_back("WindowBottomOffset=80.0");
+
+            if (insertIndex != -1) {
+                fileLines.insert(fileLines.begin() + insertIndex, insertLines.begin(), insertLines.end());
+            }
+            else {
+                fileLines.insert(fileLines.end(), insertLines.begin(), insertLines.end());
+            }
+
+            std::ofstream outFile(iniPath);
+            if (outFile.is_open()) {
+                for (const auto& l : fileLines) {
+                    outFile << l << "\n";
+                }
+                outFile.close();
+                lastIniTime = std::filesystem::last_write_time(iniPath, ec);
+            }
+        }
     }
 
     void LoadFont(ImGuiIO& io) {
@@ -326,6 +400,9 @@ namespace SubtitleManager
     void StartSubtitles(RE::TESObjectBOOK* book, int32_t soundID) {
         if (!book) return;
 
+		// Reload INI settings in case the user changed them while the game is running
+        LoadSettings();
+
         RE::BSString description;
         book->GetDescription(description, nullptr);
 
@@ -376,10 +453,10 @@ namespace SubtitleManager
             ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
             ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoDecoration;
 
-        float windowWidth = screenWidth * 0.5f;
-        float windowHeight = screenHeight * 0.15f;
+        float windowWidth = screenWidth * fWindowWidthMult;
+        float windowHeight = screenHeight * fWindowHeightMult;
 
-        ImGui::SetNextWindowPos(ImVec2((screenWidth - windowWidth) * 0.5f, screenHeight - windowHeight - 80.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2((screenWidth - windowWidth) * 0.5f, screenHeight - windowHeight - fWindowBottomOffset), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
 
         if (ImGui::Begin("VBoS_Subtitles", nullptr, flags)) {

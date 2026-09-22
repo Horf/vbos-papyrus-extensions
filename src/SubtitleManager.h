@@ -14,6 +14,11 @@ namespace SubtitleManager
     extern std::string fontPath;
     extern float fontSize;
 
+    // Bounding Box Settings
+    extern float fWindowWidthMult;
+    extern float fWindowHeightMult;
+    extern float fWindowBottomOffset;
+
     // Parses settings and translations from the INI file
     void LoadSettings();
 
