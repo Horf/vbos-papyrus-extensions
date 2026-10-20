@@ -11,6 +11,8 @@
 #include <fstream>
 #include <string>
 #include <charconv>
+#include <map>
+#include <utility>
 
 #include <RE/B/BSCoreTypes.h>
 #include <RE/F/FormTypes.h>
@@ -74,6 +76,7 @@ namespace ConfigManager
         size_t globalTotal = 0;
         size_t globalOverwrites = 0;
         size_t globalErrors = 0;
+        size_t globalSkipped = 0;
 
 		// Security check, in case of filesystem errors
         std::error_code iteratorError;
@@ -87,6 +90,20 @@ namespace ConfigManager
         // Find all _VBOS.ini files
         std::vector<std::filesystem::path> validFiles;
         std::vector<std::string> ignoredFiles;
+
+		// Check for loaded plugins to avoid unnecessary lookups for each line in the config files
+        std::unordered_map<std::string, bool> pluginLoadedCache;
+        auto isPluginLoaded = [&](const std::string& name) {
+            std::string key = name;
+            std::ranges::transform(key, key.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            if (auto it = pluginLoadedCache.find(key); it != pluginLoadedCache.end()) return it->second;
+            const bool loaded = dataHandler->LookupLoadedModByName(name) ||
+                dataHandler->LookupLoadedLightModByName(name);
+            pluginLoadedCache.emplace(std::move(key), loaded);
+            return loaded;
+        };
+
         for (const auto& entry : directoryIterator) {
             std::error_code entryError;
             if (entry.is_regular_file(entryError)) {
@@ -153,6 +170,8 @@ namespace ConfigManager
             size_t fileSwaps = 0;
             size_t fileOverwrites = 0;
             size_t fileErrors = 0;
+            size_t fileSkipped = 0;
+            std::map<std::string, size_t> skippedPlugins;
 
             while (std::getline(file, line)) {
                 lineNum++;
@@ -219,6 +238,13 @@ namespace ConfigManager
                     fileErrors++; continue;
                 }
 
+                // Plugin not installed or not active
+                if (!isPluginLoaded(pluginName)) {
+                    skippedPlugins[pluginName]++;
+                    fileSkipped++;
+                    continue;
+                }
+
 				// Lookup Form
                 auto* bookForm = dataHandler->LookupForm(localID, pluginName);
 
@@ -272,9 +298,15 @@ namespace ConfigManager
                 bookToPathMap[globalID] = cleanPath;
             }
 
+            // Summarize skipped entries
+            for (const auto& [plugin, count] : skippedPlugins) {
+                logs::info("\tSkipped {} entries: plugin '{}' is not installed or not active", count, plugin);
+            }
+
             // Add file stats to global stats
             globalErrors += fileErrors;
             globalOverwrites += fileOverwrites;
+            globalSkipped += fileSkipped;
             globalTotal += fileSwaps;
 
             // Summary per File
@@ -284,9 +316,11 @@ namespace ConfigManager
             else {
                 logs::info("\tResult:\n"
                     "\t\t\t\t\t{} new mappings\n"
+                    "\t\t\t\t\t{} skipped entries\n"
                     "\t\t\t\t\t{} overwrites\n"
                     "\t\t\t\t\t{} errors\n",
                     fileSwaps,
+					fileSkipped,
                     fileOverwrites,
                     fileErrors);
             }
@@ -295,9 +329,11 @@ namespace ConfigManager
         logs::info("==========================================\n"
             "\t\t\t\tLoading complete\n"
             "\t\t\t\t\tTotal Active Mappings : {}\n"
+            "\t\t\t\t\tTotal Skipped Entries : {}\n"
             "\t\t\t\t\tTotal Overwrites : {}\n"
             "\t\t\t\t\tTotal Errors : {}",
             bookToPathMap.size(),
+			globalSkipped,
             globalOverwrites,
             globalErrors);
     }

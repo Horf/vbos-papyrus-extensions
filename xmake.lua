@@ -11,7 +11,7 @@ add_requires("nlohmann_json")
 
 -- set project
 set_project("VBoS Extension Plugin")
-set_version("2.2.6")
+set_version("2.2.10")
 set_license("GPL-3.0")
 
 -- set defaults
@@ -47,3 +47,8 @@ target("VBoS Extension Plugin")
     add_headerfiles("src/**.h")
     add_includedirs("src")
     set_pcxxheader("src/pch.h")
+
+    -- expose project version to the code
+    on_load(function (target)
+        target:add("defines", 'VBOS_VERSION="' .. target:version() .. '"')
+    end)
