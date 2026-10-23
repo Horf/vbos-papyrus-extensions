@@ -46,7 +46,7 @@ namespace ConfigManager
         std::string path(strPath);
         for (char& c : path) {
             if (c == '/') c = '\\';
-            else c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            else if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + ('a' - 'A'));
         }
         if (path.starts_with("data\\")) return path.substr(5);
         return path;
@@ -159,7 +159,9 @@ namespace ConfigManager
             std::ifstream file(filePath);
             if (!file.is_open()) continue;
 
-            std::string fileName = filePath.filename().string();
+            // Same safe UTF-8 conversion as in the scan above
+            auto u8FileName = filePath.filename().u8string();
+            std::string fileName(reinterpret_cast<const char*>(u8FileName.c_str()));
             logs::info("Processing config: {}...", fileName);
 
             std::string line;

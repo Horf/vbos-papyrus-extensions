@@ -5,6 +5,7 @@
 #include <string>
 #include <cstdint>
 
+#include <RE/B/BSCoreTypes.h>
 #include <RE/T/TESObjectBOOK.h>
 
 namespace SubtitleManager
@@ -26,10 +27,13 @@ namespace SubtitleManager
     void LoadFont(ImGuiIO& io);
 
     // Initiates the subtitle system for a specific book form
-    void StartSubtitles(RE::TESObjectBOOK* book, int32_t soundID);
+    void StartSubtitles(RE::TESObjectBOOK* book, int32_t soundID, bool useBookmark = false);
 
     // Stops and clears currently active subtitles
-    void StopSubtitles(int32_t soundID = -1);
+    void StopSubtitles(int32_t soundID = -1, bool resetBookmark = false);
+
+    // Resets the saved subtitle scroll position for a book (or the last read book)
+    void ResetBookBookmark(RE::FormID bookID = 0);
 
     // Pauses or unpauses scrolling text
     void SetPaused(bool isPaused);
@@ -39,6 +43,9 @@ namespace SubtitleManager
 
     // Registers the keyboard input listener for speed adjustments
     void InstallInputSink();
+
+    // Moves the saved position of the last read book back by a number of seconds
+    void RewindBookBookmark(float a_seconds);
 
     // Cleans and formats book text by parsing internal tags and aliases
     std::string CleanBookText(std::string rawText);

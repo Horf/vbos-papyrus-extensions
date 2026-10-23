@@ -8,13 +8,18 @@
 #include <fstream>
 #include <stdexcept>
 #include <cfloat>
+#include <ios>
 #include <algorithm>
 #include <filesystem>
 #include <system_error>
 #include <format>
 #include <cstdint>
 #include <vector>
+#include <unordered_map>
+#include <mutex>
+#include <utility>
 
+#include <RE/B/BSCoreTypes.h>
 #include <RE/B/BSInputDeviceManager.h>
 #include <RE/B/BSString.h>
 #include <RE/B/BSTEvent.h>
@@ -35,7 +40,7 @@ namespace SubtitleManager
     float fontSize = 24.0f;
     ImVec4 textColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 
-	// Default window size multipliers (relative to screen size)
+    // Default window size multipliers (relative to screen size)
     float fWindowWidthMult = 0.5f;
     float fWindowHeightMult = 0.15f;
     float fWindowBottomOffset = 80.0f;
@@ -54,7 +59,16 @@ namespace SubtitleManager
     int32_t activeSoundID = -1;
     static std::filesystem::file_time_type lastIniTime;
 
-	// Alias translations as default fallback
+    // Bookmark state for resuming subtitles
+    RE::FormID activeBookID = 0;
+    RE::FormID lastReadBookID = 0;
+    bool activeUseBookmark = false;
+    std::unordered_map<RE::FormID, float> savedScrollPositions;
+
+    // Mutex is used by the Papyrus thread, the sound monitoring threads and the render thread
+    static std::mutex stateMutex;
+
+    // Alias translations as default fallback
     std::string t_Player = "Friend";
     std::string t_Spouse = "Spouse";
     std::string t_Child = "Child";
@@ -89,7 +103,7 @@ namespace SubtitleManager
     std::string t_FallbackPerson = "Someone";
     std::string t_FallbackNumber = "some";
 
-    // Helper: Removes leading and trailing whitespace
+    // Removes leading and trailing whitespace
     static std::string TrimStr(const std::string& str) {
         size_t first = str.find_first_not_of(" \t\r\n");
         if (first == std::string::npos) return "";
@@ -101,7 +115,7 @@ namespace SubtitleManager
         std::string iniPath = "Data\\SKSE\\Plugins\\VBoS_Subtitles.ini";
         std::error_code ec;
 
-		// Check if the INI file exists and if it was changed since the last load
+        // Check if the INI file exists and if it was changed since the last load
         if (std::filesystem::exists(iniPath, ec)) {
             auto currentTime = std::filesystem::last_write_time(iniPath, ec);
             if (currentTime == lastIniTime) {
@@ -145,7 +159,7 @@ namespace SubtitleManager
                     else if (key == "FontSize") fontSize = std::stof(val);
                     else if (key == "ColorR") r = std::clamp(std::stof(val), 0.0f, 255.0f);
                     else if (key == "ColorG") g = std::clamp(std::stof(val), 0.0f, 255.0f);
-                    else if (key == "ColorB"){
+                    else if (key == "ColorB") {
                         b = std::clamp(std::stof(val), 0.0f, 255.0f);
                         insertIndex = static_cast<int>(fileLines.size());
                     }
@@ -156,18 +170,18 @@ namespace SubtitleManager
                     // Bounding box settings
                     else if (key == "WindowWidthMult") {
                         fWindowWidthMult = std::clamp(std::stof(val), 0.05f, 1.0f);
-						foundWidth = true;
+                        foundWidth = true;
                     }
                     else if (key == "WindowHeightMult") {
                         fWindowHeightMult = std::clamp(std::stof(val), 0.05f, 1.0f);
-						foundHeight = true;
+                        foundHeight = true;
                     }
                     else if (key == "WindowBottomOffset") {
                         fWindowBottomOffset = std::stof(val);
-						foundOffset = true;
+                        foundOffset = true;
                     }
 
-					// Translations
+                    // Translations
                     else if (key == "AliasPlayer") t_Player = val;
                     else if (key == "AliasSpouse") t_Spouse = val;
                     else if (key == "AliasChild") t_Child = val;
@@ -211,14 +225,14 @@ namespace SubtitleManager
                 }
             }
         }
-		file.close();
+        file.close();
 
         textColor = ImVec4(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
 
-		// If any of the bounding box settings were missing, insert them with default values and update the INI file
+        // If any of the bounding box settings were missing, insert them with default values and update the INI file
         if (!foundWidth || !foundHeight || !foundOffset) {
             std::vector<std::string> insertLines;
-            
+
             insertLines.push_back("");
             insertLines.push_back("; Subtitle window size");
             insertLines.push_back("; How wide the subtitle window is (1.0 = 100% of screen width. Default is 0.5)");
@@ -283,13 +297,13 @@ namespace SubtitleManager
         if (rawText.empty()) return "";
         std::string cleaned = rawText;
 
-		// Basic cleaning
+        // Basic cleaning
         static const std::regex r_cr("\r");
         static const std::regex r_pb("\\[pagebreak\\]", std::regex_constants::icase);
         static const std::regex r_br("<br>", std::regex_constants::icase);
         static const std::regex r_img("<img[^>]*Illuminated_Letters/([a-zA-Z])_letter\\.png[^>]*>", std::regex_constants::icase);
 
-		// Change <alias> tags to a more readable format
+        // Change <alias> tags to a more readable format
         static const std::regex r_aPlayer("<Alias=(Player|Friend|Companion|Follower)>", std::regex_constants::icase);
         static const std::regex r_aSpouse("<Alias=(Spouse|Wife|Husband)>", std::regex_constants::icase);
         static const std::regex r_aChild("<Alias=(Child|Son|Daughter)>", std::regex_constants::icase);
@@ -314,17 +328,17 @@ namespace SubtitleManager
         static const std::regex r_aItem("<Alias=(Item|Weapon|Armor|Artifact|Reward)>", std::regex_constants::icase);
         static const std::regex r_aBook("<Alias=(Book)>", std::regex_constants::icase);
 
-		// Pronouns & race/gender
+        // Pronouns & race/gender
         static const std::regex r_aRaceGen("<Alias\\.(Race|Gender)=Player>", std::regex_constants::icase);
         static const std::regex r_aPro("<Alias\\.Pronoun=[^>]*>", std::regex_constants::icase);
         static const std::regex r_aProObj("<Alias\\.PronounObj=[^>]*>", std::regex_constants::icase);
         static const std::regex r_aProPosObj("<Alias\\.PronounPosObj=[^>]*>", std::regex_constants::icase);
 
-		// Globals (dates & gold)
+        // Globals (dates & gold)
         static const std::regex r_gDate("<Global\\.Day[^>]*>[ \t]*<Global\\.MonthWord[^>]*>,[ \t]*<Global\\.Year[^>]*>", std::regex_constants::icase);
         static const std::regex r_gMoney("<Global=WIKill[^>]*>", std::regex_constants::icase);
 
-		// Fallback: remove any remaining tags that weren't specifically handled
+        // Fallback: remove any remaining tags that weren't specifically handled
         static const std::regex r_aAnyFallback("<Alias[^>]*>[ \t]*,?[ \t]*", std::regex_constants::icase);
         static const std::regex r_gAnyFallback("<Global[^>]*>", std::regex_constants::icase);
 
@@ -375,18 +389,18 @@ namespace SubtitleManager
         cleaned = std::regex_replace(cleaned, r_gDate, t_Date);
         cleaned = std::regex_replace(cleaned, r_gMoney, t_Money);
 
-		// Fallback for unhandled tags
+        // Fallback for unhandled tags
         cleaned = std::regex_replace(cleaned, r_aAnyFallback, t_FallbackPerson);
         cleaned = std::regex_replace(cleaned, r_gAnyFallback, t_FallbackNumber);
 
-		// Cleaning the layout and formatting
+        // Cleaning the layout and formatting
         cleaned = std::regex_replace(cleaned, r_tags, "");
         cleaned = std::regex_replace(cleaned, r_tabs, " ");
         cleaned = std::regex_replace(cleaned, r_spaces_lead, "\n");
         cleaned = std::regex_replace(cleaned, r_spaces_trail, "\n");
         cleaned = std::regex_replace(cleaned, r_multi_space, " ");
 
-		// Multiple empty lines down to one
+        // Multiple empty lines down to one
         cleaned = std::regex_replace(cleaned, r_empty, "\n\n");
 
         size_t first = cleaned.find_first_not_of(" \t\n");
@@ -397,31 +411,86 @@ namespace SubtitleManager
         return cleaned;
     }
 
-    void StartSubtitles(RE::TESObjectBOOK* book, int32_t soundID) {
+    // Stores or discards the bookmark and clears the active subtitle state
+    static void StopSubtitlesLocked(int32_t soundID, bool resetBookmark) {
+        if (soundID != -1 && soundID != activeSoundID) return;
+
+        if (activeBookID != 0) {
+            if (resetBookmark) {
+                savedScrollPositions.erase(activeBookID);
+            }
+            else if (isReading && activeUseBookmark && currentScrollY > 0.0f) {
+                savedScrollPositions[activeBookID] = currentScrollY;
+            }
+        }
+
+        isReading = false;
+        currentText.clear();
+        activeSoundID = -1;
+        activeBookID = 0;
+        activeUseBookmark = false;
+    }
+
+    void StartSubtitles(RE::TESObjectBOOK* book, int32_t soundID, bool useBookmark) {
         if (!book) return;
 
-		// Reload INI settings in case the user changed them while the game is running
+        // Reload INI settings in case the user changed them while the game is running
         LoadSettings();
 
         RE::BSString description;
         book->GetDescription(description, nullptr);
 
-        currentText = CleanBookText(description.c_str());
+        // The expensive regex work happens outside of the lock
+        std::string newText = CleanBookText(description.c_str());
+
+        std::scoped_lock lock(stateMutex);
+
+        // A previous book is still active: store its position before it gets replaced
+        if (isReading && activeBookID != 0) {
+            StopSubtitlesLocked(-1, false);
+        }
+
+        currentText = std::move(newText);
 
         if (!currentText.empty()) {
+            activeBookID = book->GetFormID();
+            lastReadBookID = activeBookID;
+            activeUseBookmark = useBookmark;
+
+            // Restore saved scroll position if bookmarking is active for this book
+            if (useBookmark && savedScrollPositions.contains(activeBookID)) {
+                currentScrollY = savedScrollPositions[activeBookID];
+            }
+            else {
+                currentScrollY = 0.0f;
+            }
+
             isReading = true;
             isPaused = false;
-            currentScrollY = 0.0f;
             activeSoundID = soundID;
         }
     }
 
-    void StopSubtitles(int32_t soundID) {
-        if (soundID != -1 && soundID != activeSoundID) return;
+    void StopSubtitles(int32_t soundID, bool resetBookmark) {
+        std::scoped_lock lock(stateMutex);
+        StopSubtitlesLocked(soundID, resetBookmark);
+    }
 
-        isReading = false;
-        currentText.clear();
-		activeSoundID = -1;
+    void ResetBookBookmark(RE::FormID bookID) {
+        std::scoped_lock lock(stateMutex);
+        RE::FormID targetID = bookID != 0 ? bookID : lastReadBookID;
+        if (targetID != 0) {
+            savedScrollPositions.erase(targetID);
+        }
+    }
+
+    void RewindBookBookmark(float a_seconds) {
+        std::scoped_lock lock(stateMutex);
+        auto it = savedScrollPositions.find(lastReadBookID);
+        if (it != savedScrollPositions.end()) {
+            // same unit as the scrolling in Render() (pixels per second)
+            it->second = (std::max)(0.0f, it->second - fScrollSpeed * a_seconds);
+        }
     }
 
     void SetPaused(bool paused) {
@@ -429,6 +498,7 @@ namespace SubtitleManager
     }
 
     void Render() {
+        std::scoped_lock lock(stateMutex);
         if (!isReading || currentText.empty() || !RenderManager::IsReady()) return;
 
         ImGuiIO& io = ImGui::GetIO();
